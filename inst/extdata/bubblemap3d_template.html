@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BubbleMAP relief — pan-cancer TME atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Archivo+Narrow:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#FBFBFC;
+  --ink:#0E1A24;
+  --ink-2:#5A6670;
+  --ink-3:#909BA4;
+  --rule:#E2E7EB;
+  --rule-2:#F0F3F5;
+  --panel:rgba(255,255,255,.86);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:13px;line-height:1.45;overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+canvas{display:block;position:fixed;inset:0;touch-action:none;cursor:grab}
+canvas.dragging{cursor:grabbing}
+
+.masthead{position:fixed;top:20px;left:24px;z-index:5;pointer-events:none;max-width:360px}
+.masthead h1{
+  font-family:"Archivo Narrow","Archivo",sans-serif;
+  font-weight:600;font-size:19px;letter-spacing:-.01em;margin:0;line-height:1.15;
+}
+.masthead p{margin:5px 0 0;color:var(--ink-2);font-size:12px;max-width:31ch}
+.tally{margin-top:12px;display:flex;align-items:baseline;gap:6px;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.tally b{font-size:14px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.tally #tRed{display:block;margin-top:2px;color:var(--ink-3);font-size:11px}
+.tally .arrow{color:var(--ink-3)}
+
+/* gene rail */
+.rail{
+  position:fixed;left:24px;bottom:24px;z-index:5;
+  background:var(--panel);backdrop-filter:blur(9px);
+  border:1px solid var(--rule);border-radius:3px;padding:11px 12px 12px;
+  width:212px;
+  /* the panel has grown past a short viewport — let it scroll rather than
+     run off the top of the window */
+  max-height:calc(100vh - 48px);overflow-y:auto;overscroll-behavior:contain;
+}
+.rail::-webkit-scrollbar{width:6px}
+.rail::-webkit-scrollbar-thumb{background:#D8DDE2;border-radius:3px}
+.rail-head{
+  display:flex;justify-content:space-between;align-items:baseline;
+  margin-bottom:9px;
+}
+.rail-head span:first-child{font-weight:600;font-size:12px}
+.rail-head span:last-child{color:var(--ink-3);font-size:11px}
+.genes{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.gene{
+  appearance:none;border:1px solid transparent;background:var(--rule-2);
+  border-radius:2px;padding:5px 6px;font:inherit;font-size:11.5px;
+  color:var(--ink-2);cursor:pointer;text-align:left;
+  transition:background .13s,color .13s,border-color .13s;
+}
+.gene:hover{background:#E9EEF1;color:var(--ink)}
+.gene[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.gene:focus-visible,.chip:focus-visible,.leg li:focus-visible,.slider:focus-visible{
+  outline:2px solid #3A7BD5;outline-offset:2px}
+
+.elev{margin-top:11px;padding-top:10px;border-top:1px solid var(--rule)}
+.elev label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-2);margin-bottom:6px}
+.slider{
+  -webkit-appearance:none;appearance:none;width:100%;height:2px;
+  background:var(--rule);border-radius:2px;outline:none;
+}
+.slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--ink);cursor:pointer;border:2px solid var(--paper);
+  box-shadow:0 0 0 1px var(--ink)}
+.slider::-moz-range-thumb{
+  width:13px;height:13px;border-radius:50%;background:var(--ink);
+  cursor:pointer;border:2px solid var(--paper);box-shadow:0 0 0 1px var(--ink)}
+
+.seg{display:flex;margin-top:8px;border:1px solid var(--rule);border-radius:2px;overflow:hidden}
+.seg button{
+  flex:1;appearance:none;border:0;border-right:1px solid var(--rule);
+  background:transparent;font:inherit;font-size:11px;color:var(--ink-2);
+  padding:5px 0;cursor:pointer;transition:background .13s,color .13s}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:var(--rule-2);color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.seg button:focus-visible{outline:2px solid #3A7BD5;outline-offset:-2px}
+.seg button[data-st="b"]{font-weight:700}
+.seg button[data-st="i"]{font-style:italic}
+.tbtn{
+  width:100%;margin-top:6px;appearance:none;border:1px solid var(--rule);
+  background:transparent;border-radius:2px;padding:6px 0;font:inherit;
+  font-size:11.5px;color:var(--ink-2);cursor:pointer;transition:.13s}
+.tbtn:hover{border-color:var(--ink-3);color:var(--ink)}
+.tbtn[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tbtn:focus-visible{outline:2px solid #3A7BD5;outline-offset:2px}
+/* legend */
+.leg{
+  position:fixed;right:24px;top:20px;max-height:calc(100vh - 48px);overflow-y:auto;z-index:5;
+  background:var(--panel);backdrop-filter:blur(9px);
+  border:1px solid var(--rule);border-radius:3px;padding:11px 12px;
+  min-width:196px;
+}
+.leg h2{font-size:12px;font-weight:600;margin:0 0 3px}
+.leg .hint{font-size:10.5px;color:var(--ink-3);margin:0 0 8px}
+.leg ul{list-style:none;margin:0;padding:0}
+.leg li{
+  display:grid;grid-template-columns:auto auto 14px 1fr auto;gap:6px;align-items:center;
+  padding:2.5px 3px;border-radius:2px;cursor:pointer;font-size:11.5px;
+  color:var(--ink-2);transition:background .12s,opacity .12s;
+}
+.leg li:hover{background:var(--rule-2);color:var(--ink)}
+.leg li[data-off="1"] .name{opacity:.3}
+.leg li[data-off="1"] .n{opacity:.4}
+.leg li[data-off="1"] .sw{opacity:.4}
+.leg li .sw{
+  -webkit-appearance:none;appearance:none;
+  width:13px;height:13px;padding:0;border:0;background:none;
+  border-radius:50%;cursor:pointer;overflow:hidden;display:block}
+.leg li .sw::-webkit-color-swatch-wrapper{padding:0}
+.leg li .sw::-webkit-color-swatch{border:1px solid rgba(14,26,36,.14);border-radius:50%}
+.leg li .sw::-moz-color-swatch{border:1px solid rgba(14,26,36,.14);border-radius:50%}
+.leg li .sw:focus-visible{outline:2px solid #3A7BD5;outline-offset:2px}
+.leg li .n{font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+/* per-type overrides for contour and emphasis. Off by default: with none set
+   the automatic behaviour (top-expressing type) is unchanged. */
+.leg li .tog{
+  width:13px;height:13px;padding:0;flex:none;cursor:pointer;display:block;
+  border:1px solid var(--rule);border-radius:2px;background:transparent;
+  font:600 8px/1 system-ui,sans-serif;color:var(--ink-3);
+  transition:background .12s,border-color .12s,color .12s}
+.leg li .tog:hover{border-color:var(--ink-3);color:var(--ink-2)}
+.leg li .tog[aria-pressed="true"]{
+  background:var(--ink-2);border-color:var(--ink-2);color:#fff}
+.leg li .tog:focus-visible{outline:2px solid #3A7BD5;outline-offset:1px}
+.leg li[data-off="1"] .tog{opacity:.35}
+.leg li[data-lift="1"] .name{color:var(--ink);font-weight:600}
+
+/* tooltip */
+.tip{
+  position:fixed;z-index:9;pointer-events:none;opacity:0;
+  background:var(--ink);color:#fff;border-radius:3px;padding:7px 9px;
+  font-size:11px;line-height:1.5;transition:opacity .1s;max-width:210px;
+  box-shadow:0 4px 14px rgba(14,26,36,.18);
+}
+.tip b{font-weight:600}
+.tip .row{display:flex;justify-content:space-between;gap:12px;color:#B9C4CC}
+.tip .row span:last-child{color:#fff;font-variant-numeric:tabular-nums}
+.tip .hi{color:#8FD3B0}
+
+@media (max-width:880px){
+  .leg{display:none}
+  .masthead{max-width:220px}
+  .masthead p{display:none}
+  .rail{left:12px;bottom:12px;right:12px;width:auto}
+  .genes{grid-template-columns:repeat(4,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="masthead">
+  <h1 id="mTitle"></h1>
+  <p id="mSub"></p>
+  <div class="tally">
+    <b id="tCells">—</b><span class="arrow">→</span><b id="tBub">—</b>
+  </div>
+  <div id="tRed" class="tally" style="margin-top:2px;color:var(--ink-3)"></div>
+</div>
+
+<div class="rail">
+  <div class="rail-head"><span>Height marker</span><span id="railSub"></span></div>
+  <div class="genes" id="genes"></div>
+  <div class="elev">
+    <label for="elev"><span>Elevation</span><span id="elevVal">1.0×</span></label>
+    <input class="slider" type="range" id="elev" min="0" max="220" value="100">
+  </div>
+  <div class="elev" id="grpBox" hidden>
+    <label for="rad"><span>Bubble radius</span><span id="radVal">0.42</span></label>
+    <input class="slider" type="range" id="rad" min="15" max="200" value="42">
+    <label for="mg" style="margin-top:8px"><span>Min cells per bubble</span><span id="mgVal">8</span></label>
+    <input class="slider" type="range" id="mg" min="3" max="60" value="8">
+  </div>
+  <div class="elev">
+    <label for="cut"><span>Expression cutoff</span><span id="cutVal">off</span></label>
+    <input class="slider" type="range" id="cut" min="0" max="100" value="0">
+  </div>
+  <div class="elev">
+    <label for="psz"><span>Mark size</span><span id="pszVal">1.0&times;</span></label>
+    <input class="slider" type="range" id="psz" min="20" max="260" value="100">
+  </div>
+  <div class="elev">
+    <label for="fsz"><span>Text size</span><span id="fszVal">1.0&times;</span></label>
+    <input class="slider" type="range" id="fsz" min="60" max="230" value="100">
+    <div class="seg" id="fstyle">
+      <button type="button" data-st="b" aria-pressed="false">Bold</button>
+      <button type="button" data-st="i" aria-pressed="false">Italic</button>
+    </div>
+  </div>
+  <div class="elev">
+    <label for="figw"><span>Figure width (in)</span><span id="ptNote"></span></label>
+    <input class="slider" type="range" id="figw" min="30" max="180" value="70">
+  </div>
+  <button class="tbtn" id="pts" hidden>Original points</button>
+  <button class="tbtn" id="savepdf">Save PDF (vector)</button>
+  <button class="tbtn" id="save" style="margin-top:10px">Save 300 dpi PNG</button>
+  <button class="tbtn" id="flat">Flat view</button>
+</div>
+
+<div class="leg">
+  <h2>Cell types</h2>
+  <p class="hint">Click to hide, a dot to recolour.<br>C = contour, H = highlight.</p>
+  <ul id="legend"></ul>
+</div>
+
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+const DATA = __DATA__;
+
+/* ---------------------------------------------------------------- palette */
+const PAL   = DATA.palette || {};
+const SHORT = DATA.short   || {};
+
+/* ------------------------------------------------------------ preparation */
+const G = DATA.genes;
+let B = DATA.bubbles;
+const CLASSES = Object.keys(DATA.class_n).sort((a,b)=>DATA.class_n[b]-DATA.class_n[a]);
+const hidden = new Set();
+
+const cx0 = (DATA.xr[0]+DATA.xr[1])/2, cy0 = (DATA.yr[0]+DATA.yr[1])/2;
+const span = Math.max(DATA.xr[1]-DATA.xr[0], DATA.yr[1]-DATA.yr[0]);
+
+/* per-gene: max bubble expression (for a stable z normalisation) and the
+   class that lifts, with a rank-sum AUC computed on bubble means */
+let geneStats = [];
+function computeStats(){ geneStats = G.map((g,gi)=>{
+  const v = B.map(b=>b.e[gi]);
+  const max = Math.max(...v), min = Math.min(...v);
+  /* Genes start at zero, but a metric can be signed — ssGSEA scores, log
+     ratios, centred distances. Height is normalised across the observed
+     range so negative values sit below the floor plane rather than being
+     squashed against it, and the ruler is labelled over that same range. */
+  const lo = Math.min(0, min), hi = Math.max(max, lo + 1e-9);
+  /* the type that rises is the one with the highest mean — height IS a mean.
+     AUC is reported alongside as how cleanly that lift separates it. */
+  let best = null;
+  for (const c of CLASSES){
+    const inC = [], out = [];
+    B.forEach((b,i)=> (b.cl===c?inC:out).push(v[i]));
+    if (inC.length < 10) continue;
+    const m = mean(inC);
+    if (!best || m > best.mIn)
+      best = {cl:c, mIn:m, mOut:mean(out), _in:inC, _out:out};
+  }
+  if (best){ best.auc = rankAuc(best._in, best._out); delete best._in; delete best._out; }
+  return {max, min, lo, hi, best};
+}); }
+computeStats();
+function mean(a){ return a.reduce((s,x)=>s+x,0)/a.length; }
+function rankAuc(a,b){
+  const all = a.map(v=>[v,1]).concat(b.map(v=>[v,0])).sort((p,q)=>p[0]-q[0]);
+  let r = 0, i = 0;
+  while (i < all.length){
+    let j = i; while (j+1 < all.length && all[j+1][0] === all[i][0]) j++;
+    const rank = (i+j)/2 + 1;
+    for (let k=i;k<=j;k++) if (all[k][1]===1) r += rank;
+    i = j+1;
+  }
+  return (r - a.length*(a.length+1)/2) / (a.length*b.length);
+}
+
+/* size: area ∝ cells, capped at the 98th percentile like the 2D version */
+function sizeBubbles(){
+  const counts = B.map(b=>b.n).sort((a,b)=>a-b);
+  const capN = counts[Math.floor(counts.length*0.98)] || 1;
+  B.forEach(b=> b.r = Math.sqrt(Math.min(b.n,capN)/capN));
+}
+sizeBubbles();
+
+
+/* --------------------------------------------------------- live regrouping
+   radius and min_group decide which cells share a bubble, so they cannot be
+   applied to finished bubbles — the grouping has to be redone. R ships a
+   stratified subsample of the cells for exactly this, and the greedy
+   spatial-hash pass below is the same algorithm the R function runs, so the
+   two agree up to the subsample and the random seed. */
+const CELLS = DATA.cells || null;
+let CX, CY, CC, CE, cellIdx = null;
+
+if (CELLS){
+  CX = Float32Array.from(CELLS.x);
+  CY = Float32Array.from(CELLS.y);
+  CC = CELLS.c;                                    // class index per cell
+  /* genes arrive sparse — most cells are zero for most markers — and are
+     expanded once into dense arrays so the grouping pass can read them flat */
+  CE = G.map((_, g) => {
+    const a = new Float32Array(CX.length);
+    const sp = CELLS.e[g] || [];
+    for (let i = 0; i < sp.length; i += 2) a[sp[i]] = sp[i+1];
+    return a;
+  });
+  cellIdx = CELLS.classes.map(() => []);
+  for (let i = 0; i < CC.length; i++) cellIdx[CC[i]].push(i);
+}
+
+let rngState = 42;
+function rnd(){ rngState = (rngState*1664525 + 1013904223) >>> 0; return rngState/4294967296; }
+
+function groupThresh(n, minGroup, rareRelax){
+  if (!rareRelax || n >= rareRelax*minGroup) return minGroup;
+  return Math.max(3, Math.min(minGroup, Math.ceil(n/rareRelax)));
+}
+
+function bubblesOf(idx, radius, minGroup){
+  const n = idx.length;
+  const thr = groupThresh(n, minGroup, 3);
+  if (n < thr) return [];
+
+  const gx = new Int32Array(n), gy = new Int32Array(n);
+  let mnx = Infinity, mny = Infinity, mxy = -Infinity;
+  for (let i=0;i<n;i++){
+    gx[i] = Math.floor(CX[idx[i]]/radius);
+    gy[i] = Math.floor(CY[idx[i]]/radius);
+    if (gx[i] < mnx) mnx = gx[i];
+    if (gy[i] < mny) mny = gy[i];
+  }
+  for (let i=0;i<n;i++){ gx[i] -= mnx; gy[i] -= mny; if (gy[i] > mxy) mxy = gy[i]; }
+  const ny = mxy + 3;
+
+  const map = new Map();
+  for (let i=0;i<n;i++){
+    const k = gx[i]*ny + gy[i];
+    let a = map.get(k); if (!a){ a = []; map.set(k, a); }
+    a.push(i);
+  }
+
+  const ord = new Int32Array(n);
+  for (let i=0;i<n;i++) ord[i] = i;
+  for (let i=n-1;i>0;i--){ const j = (rnd()*(i+1))|0; const t = ord[i]; ord[i] = ord[j]; ord[j] = t; }
+
+  const used = new Uint8Array(n), r2 = radius*radius, out = [];
+  for (let s=0; s<n; s++){
+    const i = ord[s];
+    if (used[i]) continue;
+    const g = [i];
+    const kx = gx[i], ky = gy[i], xi = CX[idx[i]], yi = CY[idx[i]];
+    for (let dx=-1; dx<=1; dx++) for (let dy=-1; dy<=1; dy++){
+      const a = map.get((kx+dx)*ny + (ky+dy));
+      if (!a) continue;
+      for (const j of a){
+        if (j === i || used[j]) continue;
+        const ddx = CX[idx[j]]-xi, ddy = CY[idx[j]]-yi;
+        if (ddx*ddx + ddy*ddy <= r2) g.push(j);
+      }
+    }
+    if (g.length < thr) continue;
+    let sx = 0, sy = 0;
+    const e = new Array(G.length).fill(0);
+    for (const j of g){
+      const c = idx[j];
+      sx += CX[c]; sy += CY[c];
+      for (let q=0;q<G.length;q++) e[q] += CE[q][c];
+      used[j] = 1;
+    }
+    const m = g.length;
+    out.push({x:sx/m, y:sy/m, n:m, e:e.map(v=>v/m)});
+  }
+  return out;
+}
+
+let pointMode = DATA.point_mode === true;
+
+/* Spatial data is often better shown unaggregated — Visium spots and
+   segmented cells are already the unit of measurement, so pooling them into
+   bubbles throws away the resolution the assay was run for. Point mode emits
+   one mark per cell with n = 1, which every downstream step handles as a
+   bubble of size one. */
+function usePoints(){
+  if (!CELLS) return;
+  const out = new Array(CX.length);
+  for (let i=0;i<CX.length;i++){
+    const e = new Array(G.length);
+    for (let q=0;q<G.length;q++) e[q] = CE[q][i];
+    out[i] = { cl: CELLS.classes[CC[i]], x: CX[i], y: CY[i], n: 1, e };
+  }
+  B = out;
+  computeStats(); sizeBubbles();
+  for (const k in shellCache) delete shellCache[k];
+  markLifted(); draw();
+}
+
+function regroup(radius, minGroup){
+  if (!CELLS) return;
+  rngState = 42;
+  const next = [];
+  CELLS.classes.forEach((cl, ci)=>{
+    for (const b of bubblesOf(cellIdx[ci], radius, minGroup)){
+      b.cl = cl; next.push(b);
+    }
+  });
+  if (!next.length) return;
+  B = next;
+  computeStats();
+  sizeBubbles();
+  for (const k in shellCache) delete shellCache[k];
+  draw();
+}
+
+
+/* ------------------------------------------------------------------ export
+   The view is redrawn into the same canvas at a higher device-pixel ratio and
+   read back as a PNG. Everything is re-rendered rather than upscaled, so the
+   output is resolution-independent: type, hairlines and bubble edges are all
+   resolved at the export size, not interpolated from the screen bitmap. */
+let exporting = false;
+
+function exportScale(){
+  const inches = +document.getElementById("figw").value / 10;
+  return { inches, scale: inches * 300 / W };
+}
+function updatePtNote(){
+  const { inches } = exportScale();
+  /* labels are sized in CSS pixels, so their physical size depends on how
+     wide the window is relative to the figure — worth stating plainly */
+  const pt = 11.5 * fontScale * (inches / W) * 72;
+  document.getElementById("ptNote").textContent =
+    inches.toFixed(1) + " in \u00b7 labels \u2248 " + pt.toFixed(1) + " pt";
+}
+
+function drawExportLegend(){
+  const vis = CLASSES.filter(c=>!hidden.has(c));
+  if (!vis.length) return;
+  ctx.font = f(11.5, 500);
+  const wMax = Math.max(...vis.map(c=>ctx.measureText(SHORT[c]||c).width));
+  const pad = 10, row = 16*fontScale, bw = wMax + 26 + pad*2;
+  const x0 = W - bw - 18, y0 = 18, bh = vis.length*row + pad*2;
+  ctx.fillStyle = "rgba(255,255,255,.92)";
+  ctx.strokeStyle = "#E2E7EB"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.rect(x0, y0, bw, bh); ctx.fill(); ctx.stroke();
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  vis.forEach((c,i)=>{
+    const y = y0 + pad + row*i + row/2;
+    ctx.fillStyle = PAL[c] || "#B0B8BF";
+    ctx.beginPath(); ctx.arc(x0 + pad + 5, y, 4.5*fontScale, 0, 7); ctx.fill();
+    ctx.fillStyle = "#3A4650";
+    ctx.fillText(SHORT[c]||c, x0 + pad + 16, y);
+  });
+  ctx.textBaseline = "alphabetic";
+}
+
+function savePNG(){
+  const btn = document.getElementById("save");
+  const { inches, scale } = exportScale();
+  const prev = btn.textContent;
+  btn.textContent = "Rendering\u2026";
+  setTimeout(()=>{
+    const oldDPR = DPR;
+    DPR = scale;
+    stage.width = Math.round(W*DPR); stage.height = Math.round(H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    exporting = true;
+    draw();
+    drawExportLegend();
+    exporting = false;
+    stage.toBlob(blob=>{
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "BubbleMAP" + (flat ? "2D" : "3D") + "_" + G[gi] + "_" +
+                   inches.toFixed(1).replace(".","p") + "in_300dpi.png";
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+      DPR = oldDPR;
+      resize();                       // restores the screen-resolution canvas
+      btn.textContent = prev;
+    }, "image/png");
+  }, 20);
+}
+
+
+/* ------------------------------------------------------------- typography
+   Every piece of canvas text goes through f(), so one size multiplier and the
+   two style toggles reach the labels, the axis ticks, the marker caption and
+   the export legend together. Bolding raises each weight by a step rather
+   than flattening everything to 700, which keeps the lifted label heavier
+   than the rest. */
+let fontScale = 1, fontBold = false, fontItalic = false;
+function f(px, weight){
+  const w = fontBold ? Math.min(900, (weight || 400) + 200) : (weight || 400);
+  return (fontItalic ? "italic " : "") + w + " " +
+         (px * fontScale).toFixed(1) + "px Archivo, system-ui, sans-serif";
+}
+const halo = px => Math.max(2, 3.2 * fontScale * (px/11.5));
+
+
+/* ------------------------------------------------------------------ PDF out
+   A recording context that speaks the same subset of the Canvas 2-D API the
+   renderer uses, and emits PDF content-stream operators instead of pixels.
+   Shapes stay shapes and text stays text, so the result scales without
+   resampling — which a 300 dpi raster cannot do, and which tracing a raster
+   in Illustrator cannot recover. */
+const HELV_W = {
+  R: [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584],
+  B: [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584]
+};
+
+const PDF_MIN_PT = 0.5;      // hairline floor; most journals require >= 0.25
+
+function PDFCtx(w, h, scale){
+  const ops = [];
+  const gs = new Map();                    // alpha states -> resource name
+  let st = { fill:"#000", stroke:"#000", lw:1, alpha:1, font:"400 10px x",
+             align:"start", baseline:"alphabetic", join:"miter", cap:"butt" };
+  const stack = [];
+  const n = v => (Math.round(v*1000)/1000);
+  const col = c => {
+    /* accepts #rgb, #rrggbb and rgba(); alpha is carried separately */
+    let r=0,g=0,b=0,a=1;
+    if (c[0] === "#"){
+      let s = c.slice(1);
+      if (s.length === 3) s = s[0]+s[0]+s[1]+s[1]+s[2]+s[2];
+      const v = parseInt(s,16); r=(v>>16)&255; g=(v>>8)&255; b=v&255;
+    } else {
+      const m = c.match(/rgba?\(([^)]+)\)/);
+      if (m){ const p = m[1].split(",").map(Number);
+              r=p[0]; g=p[1]; b=p[2]; if (p.length>3) a=p[3]; }
+    }
+    return [r/255, g/255, b/255, a];
+  };
+  const alphaRes = (fa, sa)=>{
+    const k = fa.toFixed(3)+"_"+sa.toFixed(3);
+    if (!gs.has(k)) gs.set(k, { name:"GS"+gs.size, ca:fa, CA:sa });
+    return gs.get(k).name;
+  };
+  const applyState = ()=>{
+    const f = col(st.fill), s = col(st.stroke);
+    ops.push(`/${alphaRes(f[3]*st.alpha, s[3]*st.alpha)} gs`);
+    ops.push(`${n(f[0])} ${n(f[1])} ${n(f[2])} rg`);
+    ops.push(`${n(s[0])} ${n(s[1])} ${n(s[2])} RG`);
+    /* st.lw is in canvas units; scale converts to points. Thin strokes are
+       legal in print but vanish on screen, so hold them at a floor. */
+    ops.push(`${n(Math.max(st.lw, PDF_MIN_PT/scale))} w`);
+    ops.push(`${st.join==="round"?1:st.join==="bevel"?2:0} j`);
+    ops.push(`${st.cap==="round"?1:st.cap==="square"?2:0} J`);
+  };
+  const fontOf = ()=>{
+    const f = st.font;
+    const wt = parseInt((f.match(/(\d{3})\s/)||[])[1] || "400", 10);
+    const it = /italic/i.test(f);
+    const sz = parseFloat((f.match(/([\d.]+)px/)||[])[1] || "10");
+    const bold = wt >= 600;
+    return { res: bold ? (it?"F4":"F2") : (it?"F3":"F1"),
+             tab: bold ? HELV_W.B : HELV_W.R, size: sz };
+  };
+  const textW = (s, fo)=>{
+    let t = 0;
+    for (let i=0;i<s.length;i++){
+      const c = s.charCodeAt(i) - 32;
+      t += (c >= 0 && c < fo.tab.length ? fo.tab[c] : 500);
+    }
+    return t/1000*fo.size;
+  };
+  const esc = s => s.replace(/([\\()])/g, "\\$1");
+
+  let cur = [];                            // current path, replayed per paint
+  const emit = op => { ops.push(cur.join("\n")); ops.push(op); };
+
+  const api = {
+    _ops: ops, _gs: gs, _img: null,
+    get canvas(){ return { width:w*scale, height:h*scale }; },
+    save(){ stack.push(Object.assign({}, st)); ops.push("q"); },
+    restore(){ if (stack.length) st = stack.pop(); ops.push("Q"); },
+    beginPath(){ cur = []; },
+    closePath(){ cur.push("h"); },
+    moveTo(x,y){ cur.push(`${n(x)} ${n(y)} m`); },
+    lineTo(x,y){ cur.push(`${n(x)} ${n(y)} l`); },
+    rect(x,y,ww,hh){ cur.push(`${n(x)} ${n(y)} ${n(ww)} ${n(hh)} re`); },
+    arc(cx,cy,r,a0,a1){
+      /* four cubic segments, the standard circle approximation */
+      const k = 0.5522847498*r;
+      cur.push(`${n(cx+r)} ${n(cy)} m`);
+      cur.push(`${n(cx+r)} ${n(cy+k)} ${n(cx+k)} ${n(cy+r)} ${n(cx)} ${n(cy+r)} c`);
+      cur.push(`${n(cx-k)} ${n(cy+r)} ${n(cx-r)} ${n(cy+k)} ${n(cx-r)} ${n(cy)} c`);
+      cur.push(`${n(cx-r)} ${n(cy-k)} ${n(cx-k)} ${n(cy-r)} ${n(cx)} ${n(cy-r)} c`);
+      cur.push(`${n(cx+k)} ${n(cy-r)} ${n(cx+r)} ${n(cy-k)} ${n(cx+r)} ${n(cy)} c`);
+      cur.push("h");
+    },
+    ellipse(cx,cy,rx,ry){
+      const kx = 0.5522847498*rx, ky = 0.5522847498*ry;
+      cur.push(`${n(cx+rx)} ${n(cy)} m`);
+      cur.push(`${n(cx+rx)} ${n(cy+ky)} ${n(cx+kx)} ${n(cy+ry)} ${n(cx)} ${n(cy+ry)} c`);
+      cur.push(`${n(cx-kx)} ${n(cy+ry)} ${n(cx-rx)} ${n(cy+ky)} ${n(cx-rx)} ${n(cy)} c`);
+      cur.push(`${n(cx-rx)} ${n(cy-ky)} ${n(cx-kx)} ${n(cy-ry)} ${n(cx)} ${n(cy-ry)} c`);
+      cur.push(`${n(cx+kx)} ${n(cy-ry)} ${n(cx+rx)} ${n(cy-ky)} ${n(cx+rx)} ${n(cy)} c`);
+      cur.push("h");
+    },
+    fill(){ applyState(); emit("f"); },
+    stroke(){ applyState(); emit("S"); },
+    clip(){ emit("W n"); },
+    fillRect(x,y,ww,hh){ this.beginPath(); this.rect(x,y,ww,hh); this.fill(); },
+    clearRect(){},
+    transform(a,b,c,d,e,f){ ops.push(`${n(a)} ${n(b)} ${n(c)} ${n(d)} ${n(e)} ${n(f)} cm`); },
+    setTransform(){},                     // the page CTM is fixed
+    drawImage(){},                        // handled as a separate JPEG layer
+    measureText(s){ return { width: textW(s, fontOf()) }; },
+    _text(s,x,y,mode){
+      const fo = fontOf(), tw = textW(s, fo);
+      let tx = x;
+      if (st.align === "center") tx -= tw/2;
+      else if (st.align === "right" || st.align === "end") tx -= tw;
+      let ty = y;
+      if (st.baseline === "middle") ty += fo.size*0.36;
+      const c = col(mode === 1 ? st.stroke : st.fill);
+      ops.push(`/${alphaRes(c[3]*st.alpha, c[3]*st.alpha)} gs`);
+      ops.push(`${n(c[0])} ${n(c[1])} ${n(c[2])} rg`);
+      ops.push(`${n(c[0])} ${n(c[1])} ${n(c[2])} RG`);
+      if (mode === 1) ops.push(`${n(Math.max(st.lw*0.5, PDF_MIN_PT/scale))} w`);
+      /* text is drawn in an unflipped frame so glyphs are not mirrored */
+      ops.push("q 1 0 0 -1 0 0 cm BT");
+      ops.push(`${mode} Tr`);
+      ops.push(`/${fo.res} ${n(fo.size)} Tf`);
+      ops.push(`1 0 0 1 ${n(tx)} ${n(-ty)} Tm`);
+      ops.push(`(${esc(s)}) Tj ET Q`);
+    },
+    /* the halo is a stroked copy of the glyph outlines, mode 1 */
+    fillText(s,x,y){ this._text(s,x,y,0); },
+    strokeText(s,x,y){ this._text(s,x,y,1); },
+    createLinearGradient(){ return { addColorStop(){} }; }
+  };
+  ["fillStyle","strokeStyle","lineWidth","globalAlpha","font","textAlign",
+   "textBaseline","lineJoin","lineCap"].forEach(k=>{
+    const key = { fillStyle:"fill", strokeStyle:"stroke", lineWidth:"lw",
+                  globalAlpha:"alpha", font:"font", textAlign:"align",
+                  textBaseline:"baseline", lineJoin:"join", lineCap:"cap" }[k];
+    Object.defineProperty(api, k, {
+      get(){ return st[key]; },
+      set(v){ st[key] = v; }
+    });
+  });
+  return api;
+}
+
+function buildPDF(rec, w, h, scale, jpeg){
+  const pw = w*scale, ph = h*scale;
+  let body = `q ${scale} 0 0 ${-scale} 0 ${ph} cm\n`;
+  if (jpeg) body += `q ${w} 0 0 ${h} 0 0 cm /ImT Do Q\n`;
+  body += rec._ops.join("\n").replace(/%P/g, "") + "\nQ\n";
+
+  const objs = [];
+  const add = s => { objs.push(s); return objs.length; };
+  const gsDict = [...rec._gs.values()]
+    .map(g=>`/${g.name} << /Type /ExtGState /ca ${g.ca.toFixed(3)} /CA ${g.CA.toFixed(3)} >>`)
+    .join(" ");
+  const fonts = "/F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R";
+  const xobj = jpeg ? "/XObject << /ImT 9 0 R >>" : "";
+
+  add(`<< /Type /Catalog /Pages 2 0 R >>`);
+  add(`<< /Type /Pages /Kids [3 0 R] /Count 1 >>`);
+  add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw.toFixed(2)} ${ph.toFixed(2)}] ` +
+      `/Resources << /Font << ${fonts} >> /ExtGState << ${gsDict} >> ${xobj} >> ` +
+      `/Contents 4 0 R >>`);
+  add(`__STREAM__`);
+  ["Helvetica","Helvetica-Bold","Helvetica-Oblique","Helvetica-BoldOblique"]
+    .forEach(f => add(`<< /Type /Font /Subtype /Type1 /BaseFont /${f} /Encoding /WinAnsiEncoding >>`));
+  if (jpeg)
+    add(`__IMAGE__`);
+
+  const enc = new TextEncoder();
+  const chunks = []; let len = 0;
+  const push = u => { chunks.push(u); len += u.length; };
+  const pushStr = s => push(enc.encode(s));
+
+  pushStr("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+  const offs = [];
+  objs.forEach((o,i)=>{
+    offs.push(len);
+    if (o === "__STREAM__"){
+      const b = enc.encode(body);
+      pushStr(`${i+1} 0 obj\n<< /Length ${b.length} >>\nstream\n`);
+      push(b);
+      pushStr("\nendstream\nendobj\n");
+    } else if (o === "__IMAGE__"){
+      pushStr(`${i+1} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${jpeg.w}` +
+              ` /Height ${jpeg.h} /ColorSpace /DeviceRGB /BitsPerComponent 8` +
+              ` /Filter /DCTDecode /Length ${jpeg.bytes.length} >>\nstream\n`);
+      push(jpeg.bytes);
+      pushStr("\nendstream\nendobj\n");
+    } else {
+      pushStr(`${i+1} 0 obj\n${o}\nendobj\n`);
+    }
+  });
+  const xref = len;
+  let x = `xref\n0 ${objs.length+1}\n0000000000 65535 f \n`;
+  offs.forEach(o => { x += String(o).padStart(10,"0") + " 00000 n \n"; });
+  x += `trailer\n<< /Size ${objs.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  pushStr(x);
+
+  const out = new Uint8Array(len); let p = 0;
+  for (const c of chunks){ out.set(c, p); p += c.length; }
+  return new Blob([out], { type: "application/pdf" });
+}
+
+function savePDF(){
+  const btn = document.getElementById("savepdf");
+  const prev = btn.textContent;
+  btn.textContent = "Rendering\u2026";
+  setTimeout(()=>{
+    const inches = +document.getElementById("figw").value / 10;
+    const scale = inches*72/W;                 // PDF units are points
+
+    const jpeg = null;
+
+    const rec = PDFCtx(W, H, scale);
+    const realCtx = ctx;
+    ctxOverride(rec); draw(); drawExportLegend(); ctxOverride(realCtx);
+
+    const blob = buildPDF(rec, W, H, scale, jpeg);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "BubbleMAP" + (flat ? "2D" : "3D") + "_" + G[gi] + "_" +
+                 inches.toFixed(1).replace(".","p") + "in.pdf";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+    draw();
+    btn.textContent = prev;
+  }, 20);
+}
+
+/* ------------------------------------------------------------------ state */
+let gi = G.indexOf("COL1A1"); if (gi < 0) gi = 0;
+let giPrev = gi, morph = 1;
+let az = -0.58, el = 0.30, zoom = 1, elevMul = 1;
+let panX = 0, panY = 0;
+const stage = document.getElementById("stage");
+let ctx = stage.getContext("2d");
+function ctxOverride(c){ ctx = c; }
+let W = 0, H = 0, DPR = 1;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  stage.width = W*DPR; stage.height = H*DPR;
+  stage.style.width = W+"px"; stage.style.height = H+"px";
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  draw();
+}
+window.addEventListener("resize", ()=>{ resize(); updatePtNote(); });
+
+/* --------------------------------------------------------------- palette fn */
+function shade(hex, amt){
+  const n = parseInt(hex.slice(1),16);
+  let r = n>>16, g = (n>>8)&255, b = n&255;
+  if (amt > 0){ r += (255-r)*amt; g += (255-g)*amt; b += (255-b)*amt; }
+  else { r *= (1+amt); g *= (1+amt); b *= (1+amt); }
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+
+/* -------------------------------------------------------------- projection
+   Rotate about the vertical axis, tilt, then a mild perspective divide.
+   Z is the bubble's mean expression, normalised per gene so the tallest
+   bubble reaches a fixed fraction of the map's width. */
+let PSCALE = 1, FOC = 0;
+/* Bubble and kernel sizes were tuned against a UMAP, whose span is ~36. A
+   spatial embedding can be in microns or pixels and span tens of thousands,
+   so every length here is expressed as a fraction of the actual span. */
+const BR = span * 0.0167;          // max bubble radius
+let   sizeMul = 1;                 // user multiplier on top of it
+function setupCam(){
+  PSCALE = Math.min(W*0.72,H*0.94) / (span*1.02) * zoom;
+  FOC = span * 2.6;
+}
+const zNorm = (v, g) => (v - geneStats[g].lo) / (geneStats[g].hi - geneStats[g].lo);
+function zOf(b){
+  if (flat) return 0;
+  const a = zNorm(b.e[giPrev], giPrev);
+  const t = zNorm(b.e[gi], gi);
+  return (a + (t-a)*morph) * span * 0.46 * elevMul;
+}
+function proj(x, y, z){
+  const dx = x-cx0, dy = y-cy0;
+  const ca = Math.cos(az), sa = Math.sin(az);
+  const rx = dx*ca - dy*sa, ry = dx*sa + dy*ca;
+  const ce = Math.cos(el), se = Math.sin(el);
+  const depth = ry*ce + z*se;
+  const sy = -ry*se - z*ce;
+  const k = FOC/(FOC + depth);
+  return { x: W/2 + panX + rx*PSCALE*k, y: H*0.58 + panY + sy*PSCALE*k*0.86,
+           k, depth };
+}
+
+
+
+/* ------------------------------------------------------------ contour shell
+   A genuine 3-D envelope, not a height field. Bubbles that have actually
+   risen are treated as points in (x, y, z); a Gaussian density is built over
+   that volume and sliced horizontally. Contouring each slice at a fixed
+   density gives a stack of rings that closes over the top and pinches in at
+   the bottom, so the shell wraps the raised cluster and stops. Floor bubbles
+   are excluded up front, which is why no flat sheet appears underneath. */
+let flat   = DATA.flat === true;      // top-down, height off: the 2-D figure
+let cutoff = 0, cutAt = 0;            // cutAt 0 = off; above it bubbles stay filled
+/* Contours and emphasis are chosen per cell type from the legend (the C and H
+   toggles). With neither set the automatic behaviour applies: the
+   top-expressing type is contoured and emphasised. */
+/* Per-type overrides set from the legend. While either is empty the automatic
+   behaviour applies, so the default view is unchanged. */
+const shellPick = new Set();
+const liftPick  = new Set();
+const SH_N = 46, SH_NZ = 42;      // grid: x,y over the cluster bbox; z over 0..1
+const SH_MINZ = 0.15;             // a bubble counts as raised above this
+const SH_SXY = span * 0.0333, SH_SZ = 0.085;   // z is already normalised
+const SH_ISO = 0.13;              // isolevel, as a fraction of peak density.
+                                  // Low, deliberately: a dense core sets the
+                                  // peak, so a high level cuts the sparser
+                                  // outskirts loose and leaves bubbles
+                                  // stranded outside their own shell.
+const SH_MINPTS = 25;             // a type needs this many raised bubbles to
+                                  // earn a shell — a handful of scattered ones
+                                  // contours into stray rings, not a body
+const SH_MINAREA = 1.2;           // rings smaller than this are specks, not
+                                  // structure — kept low so real satellites survive
+const shellCache = {};
+
+const MSQ = [
+  [],[[3,0]],[[0,1]],[[3,1]],[[1,2]],[[3,0],[1,2]],[[0,2]],[[3,2]],
+  [[2,3]],[[2,0]],[[0,1],[2,3]],[[2,1]],[[1,3]],[[1,0]],[[0,3]],[]
+];
+function msq(f, nx, ny, level){
+  const segs = [];
+  const pt = (e,i,j)=>{
+    const A = f[j*nx+i], Bv = f[j*nx+i+1], C = f[(j+1)*nx+i+1], D = f[(j+1)*nx+i];
+    const t = (p,q)=> (level-p)/((q-p) || 1e-9);
+    if (e===0) return [i + t(A,Bv), j];
+    if (e===1) return [i+1, j + t(Bv,C)];
+    if (e===2) return [i + t(D,C), j+1];
+    return [i, j + t(A,D)];
+  };
+  for (let j=0;j<ny-1;j++) for (let i=0;i<nx-1;i++){
+    const c = (f[j*nx+i]>=level?1:0) | (f[j*nx+i+1]>=level?2:0) |
+              (f[(j+1)*nx+i+1]>=level?4:0) | (f[(j+1)*nx+i]>=level?8:0);
+    for (const [a,b] of MSQ[c]) segs.push([pt(a,i,j), pt(b,i,j)]);
+  }
+  return segs;
+}
+
+function loopsFrom(segs){
+  /* marching squares emits unordered segments; adjacent cells compute the
+     shared crossing with the same formula, so endpoints match exactly and the
+     pieces can be chained into rings that are fillable as polygons */
+  const key = p => p[0].toFixed(4)+","+p[1].toFixed(4);
+  const adj = new Map();
+  segs.forEach((sg,i)=>{
+    for (const e of [0,1]){
+      const k = key(sg[e]);
+      if (!adj.has(k)) adj.set(k, []);
+      adj.get(k).push({i, e});
+    }
+  });
+  const used = new Array(segs.length).fill(false);
+  const loops = [];
+  for (let s0=0; s0<segs.length; s0++){
+    if (used[s0]) continue;
+    used[s0] = true;
+    const pts = [segs[s0][0], segs[s0][1]];
+    let head = segs[s0][1];
+    for (let guard=0; guard<segs.length; guard++){
+      const cand = (adj.get(key(head)) || []).find(a=>!used[a.i]);
+      if (!cand) break;
+      used[cand.i] = true;
+      head = segs[cand.i][cand.e === 0 ? 1 : 0];
+      pts.push(head);
+    }
+    if (pts.length <= 3) continue;
+    let a2 = 0;                       // shoelace, to size the enclosed region
+    for (let i=0, j=pts.length-1; i<pts.length; j=i++)
+      a2 += (pts[j][0]+pts[i][0]) * (pts[j][1]-pts[i][1]);
+    if (Math.abs(a2/2) >= SH_MINAREA) loops.push(pts);
+  }
+  return loops;
+}
+
+function shadeRGB(hex, amt){
+  const n = parseInt(hex.slice(1),16);
+  let r = n>>16, g = (n>>8)&255, b = n&255;
+  if (amt > 0){ r += (255-r)*amt; g += (255-g)*amt; b += (255-b)*amt; }
+  else { r *= (1+amt); g *= (1+amt); b *= (1+amt); }
+  return [r|0, g|0, b|0];
+}
+
+/* hypsometric tint: lowland green through tan and brown to bare rock, the
+   convention every reader already knows from a walking map */
+const HYPSO = [
+  [0.00, [166,190,140]], [0.28, [214,207,138]], [0.52, [223,183,122]],
+  [0.76, [199,146,102]], [1.00, [222,214,203]]
+];
+function hypso(t){
+  t = Math.max(0, Math.min(1, t));
+  for (let i=1;i<HYPSO.length;i++){
+    if (t <= HYPSO[i][0]){
+      const [a,ca] = HYPSO[i-1], [b,cb] = HYPSO[i];
+      const u = (t-a)/(b-a || 1);
+      return ca.map((v,k)=> Math.round(v + (cb[k]-v)*u));
+    }
+  }
+  return HYPSO[HYPSO.length-1][1];
+}
+
+function buildShell(cl, g){
+  const pts = B.filter(b=>b.cl===cl && zNorm(b.e[g], g) >= SH_MINZ)
+               .map(b=>({x:b.x, y:b.y, z:zNorm(b.e[g], g), w:Math.sqrt(b.n)}));
+  if (pts.length < SH_MINPTS) return null;
+
+  let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+  for (const p of pts){ x0=Math.min(x0,p.x); x1=Math.max(x1,p.x);
+                        y0=Math.min(y0,p.y); y1=Math.max(y1,p.y); }
+  const pad = SH_SXY*2.2;
+  x0-=pad; x1+=pad; y0-=pad; y1+=pad;
+  const dx = (x1-x0)/(SH_N-1), dy = (y1-y0)/(SH_N-1), dz = 1/(SH_NZ-1);
+
+  const D = new Float32Array(SH_N*SH_N*SH_NZ);
+  const ixy = 1/(2*SH_SXY*SH_SXY), iz = 1/(2*SH_SZ*SH_SZ);
+  const rxy = SH_SXY*2.6, rz = SH_SZ*2.6;
+
+  for (const p of pts){
+    const i0 = Math.max(0, Math.floor((p.x-rxy-x0)/dx)),
+          i1 = Math.min(SH_N-1, Math.ceil((p.x+rxy-x0)/dx));
+    const j0 = Math.max(0, Math.floor((p.y-rxy-y0)/dy)),
+          j1 = Math.min(SH_N-1, Math.ceil((p.y+rxy-y0)/dy));
+    const k0 = Math.max(0, Math.floor((p.z-rz)/dz)),
+          k1 = Math.min(SH_NZ-1, Math.ceil((p.z+rz)/dz));
+    for (let i=i0;i<=i1;i++){
+      const ex = (x0+i*dx-p.x)**2;
+      for (let j=j0;j<=j1;j++){
+        const exy = (ex + (y0+j*dy-p.y)**2) * ixy;
+        if (exy > 9) continue;
+        for (let k=k0;k<=k1;k++){
+          const e = exy + ((k*dz-p.z)**2)*iz;
+          if (e > 9) continue;
+          D[(k*SH_N + j)*SH_N + i] += p.w * Math.exp(-e);
+        }
+      }
+    }
+  }
+  let dmax = 0;
+  for (let n=0;n<D.length;n++) if (D[n] > dmax) dmax = D[n];
+  if (dmax <= 0) return null;
+
+  /* one ring per slice, in grid coordinates — camera-independent, so this is
+     built once per (cell type, marker) and only projected on redraw */
+  const rings = [];
+  const lvl = SH_ISO*dmax;
+  const slice = new Float32Array(SH_N*SH_N);
+  for (let k=0;k<SH_NZ;k++){
+    slice.set(D.subarray(k*SH_N*SH_N, (k+1)*SH_N*SH_N));
+    const segs = msq(slice, SH_N, SH_N, lvl);
+    const loops = loopsFrom(segs);
+    if (loops.length) rings.push({z:k*dz, k, loops});
+  }
+  return {x0, y0, dx, dy, rings, n:pts.length};
+}
+
+function drawShells(){
+  if (morph < 1) return;
+  /* which type gets a shell is a separate question from whether that type is
+     being emphasised, so this reads the top-expressing type directly rather
+     than the highlight switch */
+  /* nothing is contoured until a type is picked with C in the legend */
+  const targets = [...shellPick].filter(c => !hidden.has(c));
+  for (const cl of targets) drawShell(cl);
+}
+
+function drawShell(cl){
+  const key = cl + "|" + gi;
+  const S = shellCache[key] ??= buildShell(cl, gi);
+  if (!S) return;
+  const zs = span*0.46*elevMul;
+  const col = PAL[cl] || "#B0B8BF";
+  const top = S.rings.length ? S.rings[S.rings.length-1].z : 1;
+
+  /* Many thin slices at low opacity, painted far-to-near, accumulate the way
+     a translucent solid does: a sight line crossing more of the body passes
+     through more layers and comes out denser. The interior and the far wall
+     stay visible, which is what makes it read as glass rather than as a cake.
+     Contour lines are drawn on every fifth slice only, so the topographic
+     banding shows without hatching the whole mass. */
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const r of S.rings){
+    const t = top > 0 ? r.z/top : 0;
+    /* the elevation ramp now runs inside the cell type's own hue: deep and
+       saturated at the base, paler toward the summit. Height still reads the
+       way it does on a walking map, but the body stays tied to its type. */
+    const c = shadeRGB(col, -0.20 + 0.70*t);
+    const ln = shadeRGB(col, -0.45);
+    const ruled = true;   // every slice: closely spaced rings read as a surface
+    for (const pts of r.loops){
+      ctx.beginPath();
+      pts.forEach((p,i)=>{
+        const q = proj(S.x0+p[0]*S.dx, S.y0+p[1]*S.dy, r.z*zs);
+        i ? ctx.lineTo(q.x,q.y) : ctx.moveTo(q.x,q.y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.15)`;
+      ctx.fill();
+      if (ruled){
+        ctx.strokeStyle = `rgba(${ln[0]},${ln[1]},${ln[2]},${(0.34 + 0.26*t).toFixed(2)})`;
+        ctx.lineWidth = 1.0 + 0.6*t;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+
+/* ----------------------------------------------------------------- drawing */
+let picks = [];
+function draw(){
+  if (flat){ az = 0; el = Math.PI/2 - 1e-4; }   // straight down
+  setupCam();
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = "#FBFBFC"; ctx.fillRect(0,0,W,H);
+
+  if (!flat) drawBackWalls();
+  drawFloorFrame();
+  drawContours();
+
+  /* build the draw list: one entry per visible bubble, far to near */
+  const list = [];
+  for (const b of B){
+    if (hidden.has(b.cl)) continue;
+    const z = zOf(b);
+    const p = proj(b.x, b.y, z);
+    const f = proj(b.x, b.y, 0);
+    p.r0 = Math.max(0.6, b.r * BR * sizeMul * PSCALE * p.k);
+    list.push({b, p, f, z});
+  }
+  list.sort((a,c)=> c.p.depth - a.p.depth);
+
+  /* if the lifted type is hidden there is nothing to emphasise, so fall back
+     to the neutral rendering rather than dimming every remaining bubble */
+  /* a Set, so several types can be emphasised at once. Empty until a type is
+     picked with H in the legend, in which case every bubble draws at the
+     same weight. */
+  const liftSet = new Set([...liftPick].filter(c => !hidden.has(c)));
+  const lift = liftSet.size ? true : null;   // keeps the alpha rule below
+  picks = [];
+
+  for (const it of list){
+    const {b, p, f} = it;
+    const isLift = liftSet.has(b.cl);
+    const rr = p.r0;
+
+    /* one hairline per raised bubble, on the lifted type only — enough to
+       tie a bubble to its position on the floor without hatching the plot */
+    if (!flat && isLift && Math.hypot(p.x-f.x, p.y-f.y) > 6){
+      ctx.strokeStyle = hexA(PAL[b.cl] || "#B0B8BF", 0.16);
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(f.x,f.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+    }
+
+    const col = PAL[b.cl] || "#B0B8BF";
+    const al  = !lift ? 0.62 : isLift ? 0.80 : 0.34;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 7);
+    if (cutAt > 0 && b.e[gi] < cutoff){
+      /* below the cutoff the bubble is drawn open, matching the shape split
+         that size_by = "gene" uses in the 2-D function */
+      ctx.strokeStyle = hexA(col, al);
+      ctx.lineWidth = Math.min(1.4, 0.6 + rr*0.08);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = hexA(col, al);
+      ctx.fill();
+    }
+    picks.push({x:p.x, y:p.y, r:rr, b});
+  }
+
+  if (!flat){ drawShells(); drawZAxis(); }
+  drawLabels(list, lift);
+}
+function hexA(hex,a){
+  const n = parseInt(hex.slice(1),16);
+  return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`;
+}
+
+function drawBackWalls(){
+  /* horizontal rules on the two rear faces, at the same heights as the axis
+     ticks. A bubble's elevation can then be read against a line instead of
+     being judged in mid-air, which is the whole difficulty with 3-D scatter. */
+  const [x0,x1] = DATA.xr, [y0,y1] = DATA.yr;
+  const corners = [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+  let ib = 0, bd = -Infinity;
+  corners.forEach((q,i)=>{ const p = proj(q[0],q[1],0); if (p.depth > bd){ bd = p.depth; ib = i; } });
+  const A = corners[(ib+3)%4], Bk = corners[ib], C = corners[(ib+1)%4];
+  const zmax = span*0.46*elevMul;
+  ctx.strokeStyle = "#E3E8EC"; ctx.lineWidth = 1;
+  for (let i=1;i<=4;i++){
+    const z = zmax*i/4;
+    const p1 = proj(A[0],A[1],z), p2 = proj(Bk[0],Bk[1],z), p3 = proj(C[0],C[1],z);
+    ctx.beginPath();
+    ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.lineTo(p3.x,p3.y);
+    ctx.stroke();
+  }
+  for (const q of [A,Bk,C]){
+    const a = proj(q[0],q[1],0), b = proj(q[0],q[1],zmax);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+}
+
+function drawFloorFrame(){
+  const [x0,x1] = DATA.xr, [y0,y1] = DATA.yr;
+  ctx.strokeStyle = "#EFF2F4"; ctx.lineWidth = 1;
+  const N = 5;
+  ctx.beginPath();
+  for (let i=0;i<=N;i++){
+    const t = i/N;
+    let a = proj(x0+(x1-x0)*t, y0, 0), b = proj(x0+(x1-x0)*t, y1, 0);
+    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+    a = proj(x0, y0+(y1-y0)*t, 0); b = proj(x1, y0+(y1-y0)*t, 0);
+    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = "#D7DDE3"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  const c = [[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(q=>proj(q[0],q[1],0));
+  ctx.moveTo(c[0].x,c[0].y);
+  for (let i=1;i<4;i++) ctx.lineTo(c[i].x,c[i].y);
+  ctx.closePath(); ctx.stroke();
+
+  /* UMAP axis ticks, on the two near edges */
+  ctx.fillStyle = "#9AA5AD"; ctx.font = f(10, 400);
+  const m1 = proj((x0+x1)/2, y0, 0), m2 = proj(x0, (y0+y1)/2, 0);
+  ctx.textAlign = "center";
+  ctx.fillText(DATA.axes[0], m1.x, m1.y+16);
+  ctx.fillText(DATA.axes[1], m2.x-20, m2.y);
+}
+
+function drawContours(){
+  for (const cl of CLASSES){
+    const polys = DATA.contours[cl];
+    if (!polys || hidden.has(cl)) continue;
+    const col = PAL[cl] || "#B0B8BF";
+    for (const poly of polys){
+      const a = [0.07,0.10,0.13,0.17,0.22][poly.l] ?? 0.09;
+      ctx.fillStyle = hexA(col, a);
+      ctx.beginPath();
+      poly.p.forEach((q,i)=>{
+        const s = proj(q[0], q[1], 0);
+        i ? ctx.lineTo(s.x,s.y) : ctx.moveTo(s.x,s.y);
+      });
+      ctx.closePath(); ctx.fill();
+      if (poly.l === 1){
+        ctx.strokeStyle = hexA(col, 0.30); ctx.lineWidth = 0.6; ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawZAxis(){
+  const [x0,x1] = DATA.xr, [y0,y1] = DATA.yr;
+  const zmax = span*0.46*elevMul;
+  const glo = geneStats[gi].lo, ghi = geneStats[gi].hi;
+  const dec = (ghi-glo) < 1 ? 3 : (ghi-glo) < 10 ? 2 : 1;
+  /* stand the ruler on whichever floor corner currently sits furthest left,
+     so it never falls across the map as the camera turns */
+  const corners = [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+  let c = corners[0], bx = Infinity;
+  for (const q of corners){ const p = proj(q[0],q[1],0); if (p.x < bx){ bx = p.x; c = q; } }
+  const base = proj(c[0],c[1],0), top = proj(c[0],c[1],zmax);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(251,251,252,.9)"; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.moveTo(base.x,base.y); ctx.lineTo(top.x,top.y); ctx.stroke();
+  ctx.strokeStyle = "#B9C2CA"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(base.x,base.y); ctx.lineTo(top.x,top.y); ctx.stroke();
+  ctx.font = f(10, 400);
+  ctx.textAlign = "right";
+  ctx.lineJoin = "round";
+  for (let i=0;i<=4;i++){
+    const p = proj(c[0], c[1], zmax*i/4);
+    const tick = glo + (ghi-glo)*i/4;
+    ctx.strokeStyle = "#C2CAD2"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x-5,p.y); ctx.stroke();
+    ctx.strokeStyle = "rgba(251,251,252,.95)"; ctx.lineWidth = 3;
+    ctx.strokeText(tick.toFixed(dec), p.x-8, p.y+3.5);
+    ctx.fillStyle = "#8B959D";
+    ctx.fillText(tick.toFixed(dec), p.x-8, p.y+3.5);
+  }
+  /* where each visible type's median bubble sits, as a mark on the ruler:
+     a direct ranking of the types by elevation, without adding a map layer */
+  const med = [];
+  for (const cl of CLASSES){
+    if (hidden.has(cl)) continue;
+    const v = B.filter(x=>x.cl===cl)
+               .map(x=> zNorm(x.e[giPrev] + (x.e[gi]-x.e[giPrev])*morph, gi));
+    if (v.length < 3) continue;
+    v.sort((p,q)=>p-q);
+    const m = v[v.length>>1];
+    if (m >= 0.035) med.push({cl, m});
+  }
+  for (const o of med){
+    const p = proj(c[0], c[1], zmax*o.m);
+    ctx.strokeStyle = PAL[o.cl] || "#B0B8BF";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(p.x+1, p.y); ctx.lineTo(p.x+11, p.y); ctx.stroke();
+  }
+
+  ctx.textAlign = "center";
+  ctx.font = f(11, 600);
+  ctx.lineJoin = "round"; ctx.lineWidth = halo(11);
+  ctx.strokeStyle = "rgba(251,251,252,.95)";
+  /* a tall ruler can reach the masthead, so hold the caption clear of it */
+  const ly = Math.max(top.y - 10, 196);
+  ctx.strokeText(G[gi], top.x, ly);
+  ctx.fillStyle = "#3A4650";
+  ctx.fillText(G[gi], top.x, ly);
+  ctx.font = f(10, 400);
+  ctx.fillStyle = "#9AA5AD";
+  const sub = (DATA.kinds && DATA.kinds[gi] === "metric") ? "mean value"
+                                                          : "mean expression";
+  ctx.strokeText(sub, top.x, ly+13);
+  ctx.fillText(sub, top.x, ly+13);
+}
+
+function drawLabels(list, lift){
+  /* one label per class, anchored at its KDE peak, floated to the height of
+     that class's upper quartile so it sits above its own bubbles */
+  const items = [];
+  for (const cl of CLASSES){
+    if (hidden.has(cl) || !DATA.peaks[cl]) continue;
+    const zs = list.filter(o=>o.b.cl===cl).map(o=>o.z);
+    if (!zs.length) continue;
+    zs.sort((a,b)=>a-b);
+    const zq = zs[Math.floor(zs.length*0.80)];
+    const p = proj(DATA.peaks[cl][0], DATA.peaks[cl][1], zq);
+    items.push({cl, x:p.x, y:p.y - 14, ax:p.x, ay:p.y - 14,
+                lift: cl===lift, depth:p.depth});
+  }
+  /* tethered declutter in screen space — same idea as the 2-D version */
+  ctx.font = f(11.5, 500);
+  items.forEach(o=>{ o.w = ctx.measureText(SHORT[o.cl]||o.cl).width + 8;
+                     o.h = 15*fontScale; });
+  for (let it=0; it<260; it++){
+    let moved = false;
+    for (let i=0;i<items.length;i++) for (let j=i+1;j<items.length;j++){
+      const a = items[i], b = items[j];
+      const dx = b.x-a.x, dy = b.y-a.y;
+      const nx = (a.w+b.w)/2, ny = (a.h+b.h)/2;
+      if (Math.abs(dx) < nx && Math.abs(dy) < ny){
+        const d = Math.hypot(dx,dy)||0.01;
+        const px = dx/d*1.7, py = dy/d*1.7;
+        a.x -= px; a.y -= py; b.x += px; b.y += py; moved = true;
+      }
+    }
+    items.forEach(o=>{ o.x += (o.ax-o.x)*0.02; o.y += (o.ay-o.y)*0.02; });
+    if (!moved) break;
+  }
+  items.sort((a,b)=>b.depth-a.depth);
+  for (const o of items){
+    const txt = SHORT[o.cl] || o.cl;
+    ctx.font = o.lift ? f(12.5, 600) : f(11.5, 500);
+    ctx.textAlign = "center";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(251,251,252,.92)";
+    ctx.lineWidth = halo(o.lift ? 12.5 : 11.5);
+    ctx.strokeText(txt, o.x, o.y);
+    ctx.fillStyle = o.lift ? "#0E1A24" : "#66727C";
+    ctx.fillText(txt, o.x, o.y);
+  }
+}
+
+/* ------------------------------------------------------------------- chrome */
+const fmt = n => n.toLocaleString("en-US");
+document.getElementById("tCells").textContent = fmt(DATA.n_cells)+" cells";
+document.getElementById("tBub").textContent = fmt(B.length)+" bubbles";
+document.getElementById("tRed").textContent =
+  Math.round(DATA.n_cells/B.length)+"× fewer primitives to draw";
+document.getElementById("railSub").textContent =
+  G.length + (G.length === 1 ? " marker" : " markers");
+document.querySelector(".rail-head span").textContent =
+  (DATA.kinds && DATA.kinds.indexOf("gene") < 0) ? "Height metric" : "Height marker";
+document.getElementById("mTitle").textContent = DATA.title || "Expression relief";
+document.getElementById("mSub").textContent = DATA.subtitle ||
+  "Cells are pooled into bubbles on the embedding floor, then lifted by mean expression of one marker.";
+
+const genesEl = document.getElementById("genes");
+/* Saving the page from a browser serialises the live DOM, so a re-opened copy
+   arrives with these containers already populated. Clear before building or
+   every control appears twice. */
+genesEl.innerHTML = "";
+G.forEach((g,i)=>{
+  const btn = document.createElement("button");
+  btn.className = "gene"; btn.type = "button";
+  btn.setAttribute("aria-pressed", i===gi);
+  btn.textContent = g;
+  btn.onclick = ()=> setGene(i);
+  genesEl.appendChild(btn);
+});
+
+const legEl = document.getElementById("legend");
+legEl.innerHTML = "";
+CLASSES.forEach(cl=>{
+  const li = document.createElement("li");
+  li.tabIndex = 0;
+  li.innerHTML = `<button type="button" class="tog c" aria-pressed="false"
+                          title="draw contour for ${SHORT[cl]||cl}">C</button>
+                  <button type="button" class="tog h" aria-pressed="false"
+                          title="highlight ${SHORT[cl]||cl}">H</button>
+                  <input type="color" class="sw"
+                         aria-label="colour for ${SHORT[cl]||cl}"
+                         value="${(PAL[cl]||"#cccccc").toLowerCase()}">
+                  <span class="name">${SHORT[cl]||cl}</span>
+                  <span class="n">${fmt(DATA.class_n[cl])}</span>`;
+
+  /* the swatch is a native colour input, so picking must not also toggle the
+     row's visibility */
+  const bindTog = (sel, set) => {
+    const b = li.querySelector(sel);
+    b.onclick = e => {
+      e.stopPropagation();                 // must not also hide the row
+      set.has(cl) ? set.delete(cl) : set.add(cl);
+      b.setAttribute("aria-pressed", set.has(cl));
+      markLifted();
+      draw();
+    };
+    b.onkeydown = e => e.stopPropagation();
+  };
+  bindTog(".tog.c", shellPick);
+  bindTog(".tog.h", liftPick);
+
+  const sw = li.querySelector(".sw");
+  sw.onclick = e => e.stopPropagation();
+  sw.oninput = ()=>{ PAL[cl] = sw.value; draw(); };   // live while dragging
+  sw.onkeydown = e => e.stopPropagation();
+
+  const toggle = ()=>{
+    hidden.has(cl) ? hidden.delete(cl) : hidden.add(cl);
+    li.dataset.off = hidden.has(cl) ? "1" : "0";
+    draw();
+  };
+  li.onclick = e => {
+    if (e.target.classList.contains("sw") ||
+        e.target.classList.contains("tog")) return;
+    toggle();
+  };
+  li.onkeydown = e => {
+    if (e.key === "Enter" || e.key === " "){ e.preventDefault(); toggle(); }
+  };
+
+  li.dataset.cl  = cl;
+  li.dataset.off = hidden.has(cl) ? "1" : "0";
+  legEl.appendChild(li);
+});
+
+function markLifted(){
+  [...legEl.children].forEach(li=>
+    li.dataset.lift = liftPick.has(li.dataset.cl) ? "1" : "0");
+}
+
+function setGene(i, skipAnim){
+  giPrev = gi; gi = i; 
+  [...genesEl.children].forEach((b,j)=> b.setAttribute("aria-pressed", j===i));
+  markLifted();
+  syncCut();
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (skipAnim || reduce){ morph = 1; draw(); return; }
+  morph = 0;
+  const t0 = performance.now(), D = 620;
+  (function step(t){
+    const u = Math.min(1,(t-t0)/D);
+    morph = u<0.5 ? 4*u*u*u : 1-Math.pow(-2*u+2,3)/2;
+    draw();
+    if (u < 1) requestAnimationFrame(step); else { morph = 1; draw(); }
+  })(t0);
+}
+
+document.getElementById("elev").oninput = e=>{
+  elevMul = e.target.value/100;
+  document.getElementById("elevVal").textContent = elevMul.toFixed(1)+"×";
+  draw();
+};
+if (CELLS){
+  const box = document.getElementById("grpBox");
+  const radEl = document.getElementById("rad"), radVal = document.getElementById("radVal");
+  const mgEl  = document.getElementById("mg"),  mgVal  = document.getElementById("mgVal");
+  box.hidden = false;
+  const radUnit = span / 36;               // slider 42 == 0.42 on a UMAP
+  radEl.value = Math.round((DATA.radius || 0.42) / radUnit * 100);
+  mgEl.value  = DATA.min_group || 8;
+  radVal.textContent = (radEl.value/100).toFixed(2);
+  mgVal.textContent  = mgEl.value;
+
+  let timer = null;
+  const run = ()=>{
+    radVal.textContent = (radEl.value/100*radUnit).toFixed(2);
+    mgVal.textContent  = mgEl.value;
+    clearTimeout(timer);
+    /* regrouping walks every sampled cell, so it waits for the slider to
+       settle rather than firing on each pixel of drag */
+    timer = setTimeout(()=>{
+      regroup(radEl.value/100*radUnit, +mgEl.value);
+      document.getElementById("tBub").textContent =
+        B.length.toLocaleString("en-US") + " bubbles";
+    }, 160);
+  };
+  radEl.oninput = run;
+  mgEl.oninput  = run;
+}
+
+const cutEl = document.getElementById("cut"), cutVal = document.getElementById("cutVal");
+function syncCut(){
+  const g = geneStats[gi];
+  cutoff = g.lo + (cutEl.value/100) * (g.hi - g.lo);
+  cutAt  = +cutEl.value;                 // 0 means the cutoff is off entirely
+  cutVal.textContent = cutAt === 0 ? "off" : cutoff.toFixed(3);
+}
+cutEl.oninput = ()=>{ syncCut(); draw(); };
+
+const pszEl = document.getElementById("psz");
+pszEl.oninput = ()=>{
+  sizeMul = pszEl.value/100;
+  document.getElementById("pszVal").textContent = sizeMul.toFixed(1)+"\u00d7";
+  draw();
+};
+
+const ptsBtn = document.getElementById("pts");
+if (CELLS){
+  ptsBtn.hidden = false;
+  ptsBtn.setAttribute("aria-pressed", pointMode);
+  ptsBtn.onclick = ()=>{
+    pointMode = !pointMode;
+    ptsBtn.setAttribute("aria-pressed", pointMode);
+    const box = document.getElementById("grpBox");
+    if (box) box.style.opacity = pointMode ? ".4" : "";      // grouping is moot
+    if (box) box.querySelectorAll("input").forEach(i=> i.disabled = pointMode);
+    if (pointMode) usePoints();
+    else {
+      const r = document.getElementById("rad"), m = document.getElementById("mg");
+      if (r) regroup(r.value/100*(span/36), +m.value);
+      else { B = DATA.bubbles; computeStats(); sizeBubbles();
+             for (const k in shellCache) delete shellCache[k];
+             markLifted(); draw(); }
+    }
+  };
+}
+
+const fszEl = document.getElementById("fsz");
+fszEl.oninput = ()=>{
+  fontScale = fszEl.value/100;
+  document.getElementById("fszVal").textContent = fontScale.toFixed(1)+"\u00d7";
+  updatePtNote(); draw();
+};
+document.querySelectorAll("#fstyle button").forEach(btn=>{
+  btn.onclick = ()=>{
+    const on = btn.getAttribute("aria-pressed") !== "true";
+    btn.setAttribute("aria-pressed", on);
+    if (btn.dataset.st === "b") fontBold = on; else fontItalic = on;
+    draw();
+  };
+});
+
+const figwEl = document.getElementById("figw");
+figwEl.oninput = updatePtNote;
+document.getElementById("save").onclick = savePNG;
+document.getElementById("savepdf").onclick = savePDF;
+
+const flatBtn = document.getElementById("flat");
+let saved = null;
+flatBtn.onclick = ()=>{
+  flat = !flat;
+  flatBtn.setAttribute("aria-pressed", flat);
+  if (flat){ saved = {az, el, panX, panY}; panX = panY = 0; }
+  else if (saved){ az = saved.az; el = saved.el; panX = saved.panX; panY = saved.panY; }
+  draw();
+};
+
+/* --------------------------------------------------------------- interaction */
+let drag = null;
+stage.addEventListener("pointerdown", e=>{
+  drag = {x:e.clientX, y:e.clientY, az, el, pan:e.shiftKey, px:panX, py:panY};
+  stage.classList.add("dragging"); stage.setPointerCapture(e.pointerId);
+});
+stage.addEventListener("pointermove", e=>{
+  if (drag){
+    if (drag.pan || flat){
+      panX = drag.px + (e.clientX-drag.x); panY = drag.py + (e.clientY-drag.y);
+    } else {
+      az = drag.az + (e.clientX-drag.x)*0.006;
+      el = Math.max(0.06, Math.min(1.45, drag.el + (e.clientY-drag.y)*0.005));
+    }
+    draw(); return;
+  }
+  hover(e.clientX, e.clientY);
+});
+addEventListener("pointerup", ()=>{ drag = null; stage.classList.remove("dragging"); });
+stage.addEventListener("wheel", e=>{
+  e.preventDefault();
+  zoom = Math.max(0.45, Math.min(4.5, zoom * (e.deltaY>0?0.92:1.087)));
+  draw();
+}, {passive:false});
+
+const tip = document.getElementById("tip");
+function hover(mx,my){
+  let hit = null, bd = 1e9;
+  for (let i=picks.length-1;i>=0;i--){
+    const p = picks[i];
+    const d = Math.hypot(p.x-mx, p.y-my);
+    if (d < Math.max(p.r,4) && d < bd){ bd = d; hit = p; }
+  }
+  if (!hit){ tip.style.opacity = 0; return; }
+  const b = hit.b;
+  const rows = G.map((g,i)=>{
+    const v = b.e[i];
+    return `<div class="row"><span>${g}</span><span class="${i===gi?"hi":""}">${v.toFixed(2)}</span></div>`;
+  }).join("");
+  tip.innerHTML = `<b>${SHORT[b.cl]||b.cl}</b><div class="row"><span>cells pooled</span><span>${b.n}</span></div><div style="height:5px"></div>${rows}`;
+  tip.style.opacity = 1;
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(mx+14, innerWidth-r.width-8)+"px";
+  tip.style.top  = Math.min(my+14, innerHeight-r.height-8)+"px";
+}
+
+addEventListener("keydown", e=>{
+  if (e.target !== document.body) return;
+  const k = {ArrowLeft:[-0.09,0],ArrowRight:[0.09,0],ArrowUp:[0,-0.05],ArrowDown:[0,0.05]}[e.key];
+  if (!k) return;
+  e.preventDefault();
+  az += k[0]; el = Math.max(0.06, Math.min(1.45, el + k[1])); draw();
+});
+
+/* initial state, as passed from R */
+flatBtn.setAttribute("aria-pressed", flat);
+
+/* Nothing is contoured or emphasised until the reader picks a type with the
+   C and H toggles. R can seed either set: highlight_all = TRUE selects every
+   type, and shell_types / highlight_types name specific ones. */
+if (DATA.highlight_all === true) CLASSES.forEach(c => liftPick.add(c));
+(DATA.shell_types     || []).forEach(c => { if (PAL[c]) shellPick.add(c); });
+(DATA.highlight_types || []).forEach(c => { if (PAL[c]) liftPick.add(c);  });
+[...legEl.children].forEach(li=>{
+  const cl = li.dataset.cl;
+  li.querySelector(".tog.c").setAttribute("aria-pressed", shellPick.has(cl));
+  li.querySelector(".tog.h").setAttribute("aria-pressed", liftPick.has(cl));
+});
+markLifted();
+if (DATA.elevation){
+  elevMul = DATA.elevation;
+  const el = document.getElementById("elev");
+  el.value = Math.round(Math.max(0, Math.min(2.2, elevMul))*100);
+  document.getElementById("elevVal").textContent = elevMul.toFixed(1)+"\u00d7";
+}
+if (DATA.start_gene){
+  const k = G.indexOf(DATA.start_gene);
+  if (k >= 0) gi = giPrev = k;
+}
+
+if (pointMode && CELLS){
+  const box = document.getElementById("grpBox");
+  if (box){ box.style.opacity = ".4";
+            box.querySelectorAll("input").forEach(i=> i.disabled = true); }
+  usePoints();
+}
+
+setGene(gi, true);
+resize();
+updatePtNote();
+</script>
+</body>
+</html>

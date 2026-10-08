@@ -1,0 +1,395 @@
+---
+title: "Visualizing large single-cell and spatial datasets with MANDALA"
+author: "Nicolas J. Ho, Arvind S. Mer"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    fig_width: 7
+    fig_height: 5.5
+vignette: >
+  %\VignetteIndexEntry{Visualizing large single-cell and spatial datasets with MANDALA}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  message = FALSE,
+  warning = FALSE,
+  dpi = 96,
+  fig.align = "center"
+)
+```
+
+```{r libs}
+library(MANDALA)
+library(Seurat)
+```
+
+# Why aggregate
+
+A UMAP scatter plot spends its only spare encoding channel, colour, on a
+single metadata variable such as cell types, and loses local density to 
+overplotting. Past roughly $10^5$ cells the rendered image depends on the 
+order in which rows happen to be drawn, with cells drawn later masking 
+previously drawn cells. Populations that are rare relative to their neighbours 
+therefore disappear beneath abundant ones at any practical figure size.
+
+MANDALA aggregates before rendering. Cells are pooled into bubbles or bins,
+attributes are summarised within each aggregated unit, and the summaries are 
+mapped onto distinct visual channels depending on the function being called. 
+Output is deterministic with respect to row order because aggregation precedes 
+drawing, and the number of graphical objects is set by the aggregation 
+resolution rather than by the cell count.
+
+| Function | Output | Purpose |
+| --- | --- | --- |
+| `MANDALA` | $Shiny, interactive$ | $Interactive point-and-click access to all functions below$ |
+| `BubbleMAP3D` | interactive HTML | The same representation with an expression height axis |
+| `SpatialMAP3D` | interactive HTML | The same viewer over tissue coordinates |
+| `BubbleMAP` | static (ggplot) | Density contours with data-driven bubble aggregation |
+| `HexMAP` | static (ggplot) | Hexagonal binning: majority, entropy, mean expression |
+| `MagnicMAP` | static (ggplot) | Paired overview and magnified views |
+
+
+# Example data
+
+```{r data}
+data(sample_scRNA)     # 8 marker genes, 11 annotated cell types, UMAP precomputed
+data(sample_spatial)   # bone marrow Visium: 4 genes, 1,714 spots, slice1 image
+
+sample_scRNA
+table(sample_scRNA$cell_type)
+```
+
+`sample_scRNA` is a feature-reduced version containing all of the original 
+391,963 cells, it is a pan-cancer tumour microenvironment atlas (Rapozo 
+Guimaraes et al., 2024), from CZ CELLxGENE Discover.
+
+It has a `counts` layer for exploring the package. This is a property of
+the bundled example, not a general recommendation: for your own objects, use the
+normalised layer.
+
+`sample_spatial` is a visium spatial object from an Acute Myeloid Leukemia bone
+marrow biopsy (Enes Dasdemir et al., 2025 ). Metadata such as RCTD deconvolution 
+labels and tissue structures have been added in `meta.data`, any of which can be 
+placed on the height axis with `metric =`.
+
+The most straight-forward way to start using the package is by MANDALA
+using:
+
+```{r app-quickstart, eval = FALSE}
+MANDALA(sample_scRNA) #and select BubbleMAP3D, or other scRNA-seq 
+			   #visualizing function, in the pop up or
+
+MANDALA(sample_spatial) #and select SpatialMAP3D in the popup
+```
+
+# BubbleMAP
+
+## How bubbles are formed
+
+A greedy pass repeatedly picks an unassigned seed cell, absorbs every unassigned
+cell of the same class within `radius`, and emits one bubble whose area encodes
+the number of cells absorbed. Because bubbles form from the cells themselves
+rather than from a fixed grid, their positions follow the local structure of the
+embedding rather than an arbitrary lattice.
+
+Neighbour queries use a uniform spatial hash whose cell size equals `radius`.
+Any point within `radius` of a seed must lie in the seed's own grid cell or one
+of the eight adjacent ones, so scanning that 3×3 block and applying the distance
+test is exact and returns the same neighbours a full radius search would,
+without ever materialising the complete neighbour list.
+
+## Count mode
+
+```{r bubble-count, fig.height = 6}
+BubbleMAP(
+  sample_scRNA,
+  reduction       = "umap",
+  label           = "cell_type",
+  radius          = 1,
+  min_group       = 10,
+  min_class       = 150,
+  target_cells    = NULL,
+  bubble_min_dens = NULL,
+  size_by         = "count",
+  celltype_legend = TRUE,
+  label_size      = 3
+)
+```
+
+## Gene mode
+
+Bubble area still encodes cell count; shape distinguishes bubbles whose mean
+expression falls above or below `expr_cutoff`. Keeping area on the count means
+sizes stay comparable across panels whatever else is being encoded.
+
+```{r bubble-gene, fig.height = 6}
+BubbleMAP(
+  sample_scRNA,
+  reduction    = "umap",
+  label        = "cell_type",
+  radius       = 1,
+  min_group    = 10,
+  min_class    = 150,
+  target_cells = NULL,
+  size_by      = "gene",
+  gene         = "CLDN5",
+  assay        = "RNA",
+  slot         = "counts",
+  expr_cutoff  = 0.5,
+  highlight    = "endothelial cell",
+  celltype_legend = TRUE
+)
+```
+
+A threshold encoding suits markers that are effectively binary. For a marker
+detected in only a few percent of cells, shape works where a continuous
+magnitude scale would not: there is no range to spread across.
+
+## Metric mode
+
+A continuous metadata column, encoded either as bubble transparency (default) or
+as a viridis fill with the cell-type colour retained on the bubble outline.
+
+```{r bubble-metric, fig.height = 6}
+BubbleMAP(
+  sample_scRNA,
+  reduction    = "umap",
+  label        = "cell_type",
+  radius       = 1,
+  min_group    = 10,
+  size_by      = "metric",
+  metric       = "percent.mt",
+  metric_scale = "colour",   # "alpha" for the transparency encoding
+  metric_edge  = TRUE,       # ring each bubble by cell type
+  celltype_legend = TRUE
+)
+```
+
+`metric_scale = "colour"` is usually the better choice: alpha is a weak
+perceptual channel, and the density contours underneath flatten it further.
+With `metric_edge = TRUE` the class identity is still readable per bubble,
+because it moves to the outline.
+
+## Key parameters
+
+| Parameter | Default | Notes |
+| --- | --- | --- |
+| `radius` | `0.30` | Neighbourhood radius. Larger values merge more aggressively; check bubble counts before settling. |
+| `min_group` | `8` | Minimum cells per bubble. |
+| `min_class` | `200` | Populations below this are pooled into "Other" and dropped from labels and legend. |
+| `rare_relax` | `3` | Classes with fewer than `rare_relax * min_group` cells get a proportionally reduced threshold. `NULL` disables. |
+| `target_cells` | `120000` | Stratified per-class cap. `NULL` uses every cell. |
+| `bubble_min_dens` | `0.10` | Drops bubbles outside their own class density envelope. `NULL` keeps all. |
+| `highlight` | `NULL` | Class names to emphasise. Must match the metadata exactly. |
+| `bubble_engine` | `"hash"` | Spatial-hash neighbour lookup. `"legacy"` uses RANN. |
+
+`min_class` is the parameter most likely to surprise you. If a cell type
+disappears from the plot, check its size against `min_class` before adjusting
+anything else. Classes that form no bubbles are reported by name when the
+function runs.
+
+`radius` and `min_group` interact: a bubble needs `min_group` cells within
+`radius`, so raising the radius and the threshold together keeps bubble counts
+roughly stable while changing how much local structure is smoothed away.
+
+## Return value
+
+```{r bubble-return}
+res <- BubbleMAP(sample_scRNA, label = "cell_type", layer = "counts")
+
+names(res)
+nrow(res$bubbles)
+head(res$bubbles)
+tapply(res$bubbles$count, res$bubbles$class, sum)
+```
+
+`bubbles` has one row per bubble, with `count` and any `expr_value` /
+`metric_value`. Also returned: `plot`, `contours`, `peaks`, `palette` and
+`class_n`. Pass `keep_data = TRUE` to additionally get the per-cell data frame,
+which is omitted by default because it keeps the full object alive after
+plotting.
+
+# BubbleMAP3D
+
+The same bubble reduction, written to a self-contained HTML viewer. Each bubble
+is lifted to the mean expression of a chosen marker or a metadata column of some 
+scores, so cell types that overlap in the plane separate by height.
+
+```{r live, eval = FALSE}
+BubbleMAP3D(
+  sample_scRNA,
+  gene   = c("CLDN5", "COL1A1", "KRT14", "S100A8",
+             "NKG7", "LYZ", "IGKC", "TCL1A"),
+  metric = c("percent.mt"),          # metadata columns work as height too
+  label  = "cell_type",
+  layer  = "counts"
+)
+```
+
+All markers are computed at once, so switching between them in the viewer is
+instant. In the viewer: drag to rotate, scroll to zoom, click a legend swatch to
+recolour a type or a row to hide it, and export vector PDF or 300 dpi PNG at a
+chosen figure width.
+
+## Why a bubble mean makes sparse markers usable
+
+A marker detected in 1% of cells is far too zero-inflated for a per-cell height
+axis: almost every cell sits on the floor, and the surface collapses to a flat
+sheet with a few isolated spikes. Averaged over the roughly 150 cells in a
+bubble, the same marker has real spread and produces legible relief.
+
+This is the main reason the height axis operates on bubbles rather than cells.
+It also means the height of a bubble is a local average, not a cell-level
+measurement, i.e. a bubble is raised because its neighbourhood expresses, not
+because any particular cell does.
+
+## Useful arguments
+
+- `flat = TRUE` opens overhead with height off, giving the 2-D layout.
+- `shell` draws a contour envelope around the raised type.
+- `interactive_cells` controls how many cells are shipped for the viewer's live
+  regrouping sliders; `NULL` omits them and keeps the file small.
+- `elevation`, `highlight_all` and `highlight_lifted` set the opening state of
+  the controls.
+
+
+# SpatialMAP3D
+
+The same viewer with the floor taken from tissue coordinates rather than a
+reduction. Coordinates come from a Seurat image or field-of-view (FOV), or 
+from named `meta.data` columns via `coords =`.
+
+```{r spatial, eval = FALSE}
+SpatialMAP3D(
+  sample_spatial,
+  gene      = c("COL1A1", "HBB", "MPO", "NKG7"),
+  metric    = c("dist_to_adipo"), 
+  image     = "slice1",
+  label     = "MQ_compartment",
+  mode      = "point",
+  assay     = "SCT",
+  layer     = "data",
+  min_class = 20
+)
+```
+
+`mode = "point"` draws one mark per spot, which is usually right for Visium and
+for segmented imaging data: those are already the unit of measurement, so
+pooling them discards resolution. `mode = "bubble"` pools them, which is what
+you want for dense single-cell spatial. The viewer's "Original points" button
+switches between the two.
+
+Coordinates are rescaled internally so that every length in the viewer behaves
+the same whether the data is in microns, pixels or array indices. `radius` is
+given in your original units and converted for you; if omitted it is derived
+from the measured spot spacing.
+
+
+# HexMAP
+
+Bins cells into a hexagonal lattice and summarises each bin. `hex_density` sets
+the number of bins across the shorter axis; bins containing fewer than
+`min_cells` cells are dropped.
+
+## Majority composition
+
+```{r hex-majority, fig.height = 5.5}
+HexMAP(sample_scRNA, reduction = "umap", label_col = "cell_type",
+        hex_density = 70, plot_type = "majority", min_cells = 3,
+        alpha = 0.3)
+```
+
+Alpha is scaled to the majority proportion, so identity and its local purity are
+read together: a washed-out bin is a mixed one.
+
+## Shannon entropy
+
+```{r hex-entropy, fig.height = 5.5}
+HexMAP(sample_scRNA, reduction = "umap", label_col = "cell_type",
+        hex_density = 70, plot_type = "entropy", min_cells = 3,
+        viridis = "magma")
+```
+
+Entropy makes transition zones and annotation ambiguity directly visible rather
+than inferred. High-entropy regions are where cell-type calls disagree most.
+
+## Mean expression
+
+```{r hex-gene, fig.height = 5.5}
+HexMAP(sample_scRNA, reduction = "umap", label_col = "cell_type",
+        hex_density = 70, plot_type = "gene", gene_name = "CLDN5",
+        assay = "RNA", layer = "counts", min_cells = 3)
+```
+
+Hexagonal binning of single-cell embeddings was introduced by
+[schex](https://bioconductor.org/packages/schex) (Freytag and Lister, 2020).
+Users who need binning alone should consider it directly; `HexMAP` is provided
+so that binning shares an interface and a palette with the other methods here.
+
+# MagnicMAP
+
+Draws an overview panel with the region of interest outlined, and a magnified
+panel beneath it, so the inspected region stays locatable within the whole
+embedding.
+
+```{r magnic, eval = requireNamespace("patchwork", quietly = TRUE), fig.height = 7}
+MagnicMAP(
+  sample_scRNA,
+  point_of_interest = c(0, 5),
+  reduction     = "umap",
+  group.by      = "cell_type",
+  zoom_factor   = 4,
+  pt.size       = 0.5,
+  label         = TRUE,
+  label.size    = 2,
+  combine_plots = TRUE
+)
+```
+
+`combine_plots = FALSE` returns `main_plot`, `zoom_plot` and `zoom_coordinates`
+separately, which is useful when the two panels need different point sizes.
+
+# MANDALA
+
+A local Shiny front end over an object already in your session. Nothing is
+uploaded and there is no size limit beyond your own memory.
+
+```{r app, eval = FALSE}
+MANDALA(sample_scRNA)
+```
+
+1. Pick the assay and data slot.
+2. Pick a `Grouping Column` from the metadata such as cell type columns.
+3. Select `BubbleMAP3D` for scRNA-seq data, or `SpatialMAP3D` for spatialRNA-seq data
+4. Select reductions/image, genes and/or metrics.
+5. Render. 
+
+Figures save to a folder you choose through a native dialog: PDF for the static
+methods, HTML for the interactive viewers. Results are cached per parameter set,
+and a cell cap is offered for larger objects.
+
+
+# Session info
+
+```{r session}
+sessionInfo()
+```
+
+# References
+
+Freytag, S. and Lister, R. (2020) schex avoids overplotting for large
+single-cell RNA-sequencing datasets. *Bioinformatics*, **36**, 2291–2292.
+
+Rapozo Guimaraes, G. et al. (2024) Single-cell pan-cancer tumour
+microenvironment atlas. CZ CELLxGENE Discover.
+
+Dasdemir, E. et al. (2025) Integrative spatial multi-omics reveal niche-
+specific inflammatory signaling and differentiation hierarchies in AML. 
+iScience, 29(1), 114289.

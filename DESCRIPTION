@@ -1,0 +1,51 @@
+Package: MANDALA
+Title: Multiscale Aggregation and Neighborhood Data Analysis for Local Architecture in Spatial and Single Cell RNA Sequencing Study
+Version: 1.0
+Date: 2026-09-27
+Authors@R: c(
+    person("Nicolas", "Ho", , "nicolas.ho@uottawa.ca", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-3192-3049")),
+    person("Arvind", "Mer", , "amer@uottawa.ca", role = c("aut", "fnd"),
+           comment = c(ORCID = "0000-0001-8510-7963")))
+Description: MANDALA provides intuitive solutions to visualizing
+    differences among cells in single-cell and spatial RNA-seq datasets.
+    Cells are aggregated into bubbles or hexagonal bins before rendering,
+    so identity, local density, gene expression and metadata remain legible
+    at atlas scale. Interactive viewers are written as self-contained HTML 
+    and allow exports into vector or high res PNG. Runs locally
+    in R on Seurat v3, v4 and v5 objects.
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyDataCompression: xz
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends:
+    R (>= 4.0.0)
+Imports:
+    ggplot2,
+    dplyr,
+    Seurat,
+    SeuratObject,
+    Matrix,
+    ggsci,
+    hexbin,
+    patchwork,
+    RANN,
+    jsonlite,
+    MASS,
+    KernSmooth,
+    ggrepel
+Suggests:
+    shiny,
+    tcltk,
+    rstudioapi,
+    shadowtext,
+    viridisLite,
+    ggnewscale,
+    scales,
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+URL: https://github.com/merlab/MANDALA
+BugReports: https://github.com/merlab/MANDALA/issues
