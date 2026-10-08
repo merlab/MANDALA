@@ -9,6 +9,25 @@ structure it contains: dense regions saturate, local composition becomes
 unreadable, and gene expression overlays inherit the same problem. `MANDALA`
 provides aggregation-based alternatives that work directly on Seurat objects.
 
+<p align="center">
+  <img src="man/figures/Figure2.png" width="100%" alt="MANDALA plots example">
+</p>
+
+
+`MANDALA` can also be used for spatial transcriptomics data visualization.
+
+<p align="center">
+  <img src="man/figures/Figure3.png" width="80%" alt="MANDALA plots spatial transcriptomics">
+</p>
+
+
+MANDALA also provides 3D visualization and interactive data exploration through a Shiny interface (see details below).
+<p align="center">
+  <img src="man/figures/BubbleMAP3DOvNor.gif" width="80%" alt="BubbleMAP3D, example">
+</p>
+
+
+
 | Function | Output | Purpose |
 | --- | --- | --- |
 | `BubbleMAP` | static (ggplot) | Density contours with data-driven bubble aggregation |
@@ -20,7 +39,7 @@ provides aggregation-based alternatives that work directly on Seurat objects.
 
 ---
 
-## Installation
+## Installation and Use
 
 ```r
 install.packages("devtools")
@@ -74,8 +93,8 @@ browseVignettes("MANDALA")
 
 If you use MANDALA, please cite:
 
-> Ho, N.J. and Mer, A.S. Multiscale Aggregation and Neighborhood Data Analysis for Local Architecture 
-> in Spatial and Single Cell RNA Sequencing Study. *(in preparation)*
+> Ho, N. J.; Hojeij, H.; Mer, A. 
+> MANDALA for Scalable Visualization of Large Single-Cell and Spatial Omics Datasets. *(in preparation)*
 
 ## License
 
