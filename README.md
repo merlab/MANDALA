@@ -9,10 +9,13 @@ structure it contains: dense regions saturate, local composition becomes
 unreadable, and gene expression overlays inherit the same problem. `MANDALA`
 provides aggregation-based alternatives that work directly on Seurat objects.
 
+<br>
+
 <p align="center">
-  <img src="man/figures/Figure2.png" width="100%" alt="MANDALA plots example">
+  <img src="man/figures/Figure2.png" width="80%" alt="MANDALA plots example">
 </p>
 
+<br><br>
 
 `MANDALA` can also be used for spatial transcriptomics data visualization.
 
@@ -20,6 +23,7 @@ provides aggregation-based alternatives that work directly on Seurat objects.
   <img src="man/figures/Figure3.png" width="80%" alt="MANDALA plots spatial transcriptomics">
 </p>
 
+<br><br>
 
 MANDALA also provides 3D visualization and interactive data exploration through a Shiny interface (see details below).
 <p align="center">
@@ -28,6 +32,9 @@ MANDALA also provides 3D visualization and interactive data exploration through 
 
 
 
+<br><br>
+---
+## Functions implemented in MANDALA
 | Function | Output | Purpose |
 | --- | --- | --- |
 | `BubbleMAP` | static (ggplot) | Density contours with data-driven bubble aggregation |
